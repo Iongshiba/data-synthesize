@@ -72,27 +72,36 @@ The application window will open with a 3D viewport and UI panels.
 ### Loading 3D Assets
 
 1. **Prepare your assets** in this structure:
+
+   For complex scenes:
    ```
    assets/
    └── your_object/
        ├── source/
        │   └── model.obj (or .gltf, .glb, .fbx)
-       └── textures/ (optional)
+       │   └── model.mtl
+       └── textures/
            └── texture.png
    ```
+   For single object:
+   ```
+   assets/
+   └── your_object/
+       └── model.obj
+       └── model.png (texture)
+   ```
 
-2. **Click "Browse Assets"** in the UI
-3. **Select the asset folder** (e.g., `assets/your_object/`)
-4. The model will be loaded as an object group with individual meshes
+2. **Click "Load Model"** in the UI
+3. The model will be loaded as an object group with individual meshes
 
 ### Scene Composition
 
 - **Object List Panel**: Shows all loaded objects and groups
 - **Select objects** by clicking them in the list
 - **Transform selected objects**:
-  - **Position**: Use X/Y/Z sliders or input fields
-  - **Rotation**: Use X/Y/Z rotation sliders (degrees)
-  - **Scale**: Use scale slider or scroll wheel
+  - **Position**: Use X/Y/Z sliders or input fields (Use WASD or Shift + WS)
+  - **Rotation**: Use X/Y/Z rotation sliders (degrees) (Use mouse drag left click)
+  - **Scale**: Use scale slider or scroll wheel (Use mouse scroll)
 - **Add to Candidates**: Right-click objects → "Add to Candidates" (required for annotation generation)
 
 ### Camera Controls
