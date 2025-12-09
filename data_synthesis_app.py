@@ -93,7 +93,8 @@ class DataSynthesisApp:
         self.selected_group_idx = -1
         self.selected_object_in_group_idx = -1
         # Candidate objects (for synthesis)
-        # Each entry: { 'id': str, 'name': str, 'ref': SynthesisObject }
+        # Each entry: { 'id': str, 'name': str, 'mesh_name': str, 'object': SynthesisObject }
+        # 'mesh_name' is the material name from the .obj/.mtl file
         self.candidate_objects = []
         self.image_counter = 0
 
@@ -1545,10 +1546,12 @@ class DataSynthesisApp:
                             imgui.open_popup(f"obj_ctx_{idx}")
                         if imgui.begin_popup(f"obj_ctx_{idx}"):
                             if imgui.menu_item("Add to Candidates")[0]:
+                                # Extract mesh name from the combined name (format: asset_meshname)
+                                mesh_name = obj.name.split('_', 1)[-1] if '_' in obj.name else obj.name
                                 self.candidate_objects.append(
-                                    {"name": obj.name, "object": obj}
+                                    {"name": obj.name, "mesh_name": mesh_name, "object": obj}
                                 )
-                                print(f"Added to candidates: {obj.name}")
+                                print(f"Added to candidates: {obj.name} (mesh: {mesh_name})")
                             if imgui.menu_item("Delete")[0]:
                                 self.synthesis_scene.objects.pop(idx)
                                 if self.selected_object_idx == idx:
@@ -1598,10 +1601,12 @@ class DataSynthesisApp:
                                         for c in self.candidate_objects
                                     )
                                     if not already_added:
+                                        # Extract mesh name from the combined name (format: asset_meshname)
+                                        mesh_name = obj.name.split('_', 1)[-1] if '_' in obj.name else obj.name
                                         self.candidate_objects.append(
-                                            {"name": obj.name, "object": obj}
+                                            {"name": obj.name, "mesh_name": mesh_name, "object": obj}
                                         )
-                                        print(f"Added to candidates: {obj.name}")
+                                        print(f"Added to candidates: {obj.name} (mesh: {mesh_name})")
                                 print(
                                     f"Added group '{group.name}' ({len(group.objects)} objects) to candidates"
                                 )
@@ -1649,10 +1654,12 @@ class DataSynthesisApp:
                                 f"grp{grp_idx}_obj_ctx_{obj_in_grp_idx}"
                             ):
                                 if imgui.menu_item("Add to Candidates")[0]:
+                                    # Extract mesh name from the combined name (format: asset_meshname)
+                                    mesh_name = obj.name.split('_', 1)[-1] if '_' in obj.name else obj.name
                                     self.candidate_objects.append(
-                                        {"name": obj.name, "object": obj}
+                                        {"name": obj.name, "mesh_name": mesh_name, "object": obj}
                                     )
-                                    print(f"Added to candidates: {obj.name}")
+                                    print(f"Added to candidates: {obj.name} (mesh: {mesh_name})")
                                 imgui.end_popup()
                         imgui.unindent()
 
@@ -2046,14 +2053,14 @@ class DataSynthesisApp:
         ]
 
         # Build name-based class mapping from candidate objects
-        # Objects with same name get same class_id and color
+        # Objects with same mesh_name get same class_id and color
         name_to_class_id = {}
         class_id_counter = 0
 
         for candidate in self.candidate_objects:
-            candidate_name = candidate["name"]
-            if candidate_name not in name_to_class_id:
-                name_to_class_id[candidate_name] = class_id_counter
+            mesh_name = candidate["mesh_name"]
+            if mesh_name not in name_to_class_id:
+                name_to_class_id[mesh_name] = class_id_counter
                 class_id_counter += 1
 
         # Process only candidate objects (not all scene objects)
@@ -2063,10 +2070,10 @@ class DataSynthesisApp:
             if not obj.visible:
                 continue
 
-            # Use candidate name to determine class_id (same name = same class)
-            candidate_name = candidate["name"]
-            class_id = name_to_class_id[candidate_name]
-            class_name = candidate_name
+            # Use mesh_name to determine class_id (same mesh = same class)
+            mesh_name = candidate["mesh_name"]
+            class_id = name_to_class_id[mesh_name]
+            class_name = mesh_name
             color = class_colors[class_id % len(class_colors)]
 
             # Get all mesh vertices for accurate 2D bounding box
@@ -2129,12 +2136,15 @@ class DataSynthesisApp:
         depth_array = self.depth_renderer.capture_depth()
         self.depth_renderer.unbind()
 
-        # Normalize depth to 0-255 range
-        depth_normalized = (
-            (depth_array - depth_array.min())
-            / (depth_array.max() - depth_array.min() + 1e-6)
-            * 255
-        ).astype(np.uint8)
+        # Normalize depth to 0-255 range and invert so NEAR -> white, FAR -> black
+        # Handle degenerate case by adding a small epsilon to denominator
+        min_d = float(depth_array.min())
+        max_d = float(depth_array.max())
+        span = max_d - min_d + 1e-6
+
+        # Invert mapping: near (low depth) -> 1.0, far (high depth) -> 0.0
+        depth_inv_norm = (max_d - depth_array) / span
+        depth_normalized = (depth_inv_norm * 255.0).clip(0, 255).astype(np.uint8)
 
         # Return as black and white (grayscale)
         return depth_normalized
@@ -2175,14 +2185,14 @@ class DataSynthesisApp:
         view = self.renderer.camera.get_view_matrix()
 
         # Build name-based class mapping from candidate objects
-        # Objects with same name get same class_id and color
+        # Objects with same mesh_name get same class_id and color
         name_to_class_id = {}
         class_id_counter = 0
 
         for candidate in self.candidate_objects:
-            candidate_name = candidate["name"]
-            if candidate_name not in name_to_class_id:
-                name_to_class_id[candidate_name] = class_id_counter
+            mesh_name = candidate["mesh_name"]
+            if mesh_name not in name_to_class_id:
+                name_to_class_id[mesh_name] = class_id_counter
                 class_id_counter += 1
 
         # Render ONLY candidate objects (not background) with class-specific colors
@@ -2192,9 +2202,9 @@ class DataSynthesisApp:
             if not obj.visible:
                 continue
 
-            # Use candidate name to determine class_id (same name = same class)
-            candidate_name = candidate["name"]
-            class_id = name_to_class_id[candidate_name]
+            # Use mesh_name to determine class_id (same mesh = same class)
+            mesh_name = candidate["mesh_name"]
+            class_id = name_to_class_id[mesh_name]
 
             # Get unique color for this class
             seg_color = np.array(
@@ -2245,22 +2255,27 @@ class DataSynthesisApp:
         proj = self.renderer.camera.get_projection_matrix()
         view = self.renderer.camera.get_view_matrix()
 
-        # Initialize exporters
-        coco = COCOExporter(self.output_dir)
-        yolo = YOLOExporter(self.output_dir)
+        # Initialize or reuse exporters so COCO accumulates annotations across images
+        if not hasattr(self, "coco_exporter"):
+            self.coco_exporter = COCOExporter(self.output_dir)
+        if not hasattr(self, "yolo_exporter"):
+            self.yolo_exporter = YOLOExporter(self.output_dir)
 
-        # Add image to COCO
+        coco = self.coco_exporter
+        yolo = self.yolo_exporter
+
+        # Add image entry to COCO exporter (this keeps image ids sequential)
         image_id = coco.add_image(f"{image_name}.png", width, height)
 
         # Build name-based class mapping from candidate objects
-        # Objects with same name get same class_id
+        # Objects with same mesh_name get same class_id
         name_to_class_id = {}
         class_id_counter = 0
 
         for candidate in self.candidate_objects:
-            candidate_name = candidate["name"]
-            if candidate_name not in name_to_class_id:
-                name_to_class_id[candidate_name] = class_id_counter
+            mesh_name = candidate["mesh_name"]
+            if mesh_name not in name_to_class_id:
+                name_to_class_id[mesh_name] = class_id_counter
                 class_id_counter += 1
 
         # Process only candidate objects (not all scene objects)
@@ -2276,10 +2291,10 @@ class DataSynthesisApp:
                 print(f"Skipping {obj.name}: {occlusion_pct*100:.1f}% occluded")
                 continue
 
-            # Use candidate name to determine class_id (same name = same class)
-            candidate_name = candidate["name"]
-            class_id = name_to_class_id[candidate_name]
-            class_name = candidate_name
+            # Use mesh_name to determine class_id (same mesh = same class)
+            mesh_name = candidate["mesh_name"]
+            class_id = name_to_class_id[mesh_name]
+            class_name = mesh_name
 
             # Add class
             coco.add_category(class_id, class_name)
@@ -2302,17 +2317,93 @@ class DataSynthesisApp:
             bbox_2d = compute_bbox_from_projection(vertices, mvp, width, height)
 
             if bbox_2d:
-                # Add to COCO (using name-based class_id)
-                coco.add_annotation(image_id, class_id, bbox_2d)
+                # Extract segmentation mask for this specific object
+                seg_mask = self._extract_object_mask(obj, class_id, name_to_class_id, width, height)
+                
+                # Add to COCO (using name-based class_id) with segmentation mask
+                coco.add_annotation(image_id, class_id, bbox_2d, segmentation_mask=seg_mask)
 
                 # Add to YOLO (using name-based class_id)
                 yolo.add_annotation(image_name, width, height, class_id, bbox_2d)
 
-        # Save annotations (append mode)
-        if self.image_counter == 0:
-            coco.save()
-            yolo.save_class_names()
-            yolo.create_yaml()
+        # Save annotations and YOLO class names/YAML so files are up-to-date on disk.
+        # We persist exporters across images, so COCO JSON will accumulate all annotations.
+        coco.save()
+        yolo.save_class_names()
+        yolo.create_yaml()
+
+    def _extract_object_mask(self, obj, target_class_id: int, name_to_class_id: dict, width: int, height: int) -> np.ndarray:
+        """
+        Extract binary segmentation mask for a single object by rendering it alone
+        
+        Args:
+            obj: The SynthesisObject to extract mask for
+            target_class_id: The class_id for this object
+            name_to_class_id: Mapping of mesh names to class IDs
+            width: Image width
+            height: Image height
+            
+        Returns:
+            Binary mask (HxW) where True = object pixels, False = background
+        """
+        # Define class colors (same as in segmentation visualization)
+        class_colors = [
+            (1.0, 0.0, 0.0),  # Red
+            (0.0, 1.0, 0.0),  # Green
+            (0.0, 0.0, 1.0),  # Blue
+            (1.0, 1.0, 0.0),  # Yellow
+            (1.0, 0.0, 1.0),  # Magenta
+            (0.0, 1.0, 1.0),  # Cyan
+            (1.0, 0.5, 0.0),  # Orange
+            (0.5, 0.0, 1.0),  # Purple
+            (0.0, 1.0, 0.5),  # Spring Green
+            (1.0, 0.0, 0.5),  # Rose
+            (0.5, 1.0, 0.0),  # Lime
+            (0.5, 0.0, 0.5),  # Dark Magenta
+        ]
+        
+        # Render only this object to segmentation FBO
+        self.seg_renderer.bind()
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+        
+        # Get projection matrices
+        proj = self.renderer.camera.get_projection_matrix()
+        view = self.renderer.camera.get_view_matrix()
+        
+        # Get unique color for this object's class
+        seg_color = np.array(
+            class_colors[target_class_id % len(class_colors)], dtype=np.float32
+        )
+        
+        # Convert to uint8 RGB for comparison (0-255 range)
+        target_color_uint8 = (seg_color * 255).astype(np.uint8)
+        
+        # Save and set object color
+        original_color = obj.shape.base_color.copy()
+        obj.shape.set_color(tuple(seg_color))
+        
+        # Render this object
+        transform = obj.get_transform()
+        model_matrix = transform.get_matrix()
+        obj.shape.transform(proj, view, model_matrix)
+        
+        # Disable lighting for flat color
+        obj.shape.shader_program.activate()
+        GL.glUniform1i(obj.shape.shading_mode_loc, 0)
+        obj.shape.draw(force_no_texture=True)
+        
+        # Restore original color
+        obj.shape.set_color(tuple(original_color))
+        
+        # Capture segmentation
+        seg_rgb = self.seg_renderer.capture_segmentation()
+        self.seg_renderer.unbind()
+        
+        # Create binary mask: pixels matching the object's color
+        # Allow small tolerance for floating point/rendering precision
+        mask = np.all(np.abs(seg_rgb - target_color_uint8) < 3, axis=2)
+        
+        return mask
 
     def _compute_occlusion_percentage(self, obj, width: int, height: int) -> float:
         """

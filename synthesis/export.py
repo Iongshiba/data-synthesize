@@ -98,23 +98,65 @@ class COCOExporter:
 
         # Add segmentation if mask is provided
         if segmentation_mask is not None:
-            # Convert mask to RLE or polygon
-            # For simplicity, we'll use bbox-based segmentation
-            annotation["segmentation"] = [
-                [
-                    float(x_min),
-                    float(y_min),
-                    float(x_max),
-                    float(y_min),
-                    float(x_max),
-                    float(y_max),
-                    float(x_min),
-                    float(y_max),
+            # Convert binary mask to polygon format using contour detection
+            polygons = self._mask_to_polygons(segmentation_mask)
+            if polygons:
+                annotation["segmentation"] = polygons
+            else:
+                # Fallback to bbox if no valid polygons found
+                annotation["segmentation"] = [
+                    [
+                        float(x_min),
+                        float(y_min),
+                        float(x_max),
+                        float(y_min),
+                        float(x_max),
+                        float(y_max),
+                        float(x_min),
+                        float(y_max),
+                    ]
                 ]
-            ]
 
         self.annotations["annotations"].append(annotation)
         self.annotation_id += 1
+
+    def _mask_to_polygons(self, mask: np.ndarray, min_area: int = 10):
+        """
+        Convert binary mask to COCO polygon format
+        
+        Args:
+            mask: Binary mask (HxW) where True/1 = object pixels
+            min_area: Minimum contour area to keep
+            
+        Returns:
+            List of polygons in COCO format [[x1,y1,x2,y2,...]]
+        """
+        try:
+            import cv2
+        except ImportError:
+            # If opencv not available, return empty list (will use bbox fallback)
+            return []
+        
+        # Ensure mask is uint8
+        mask_uint8 = (mask > 0).astype(np.uint8) * 255
+        
+        # Find contours
+        contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        polygons = []
+        for contour in contours:
+            # Filter small contours
+            if cv2.contourArea(contour) < min_area:
+                continue
+            
+            # Flatten contour to [x1, y1, x2, y2, ...]
+            contour = contour.flatten().tolist()
+            
+            # COCO requires at least 6 values (3 points)
+            if len(contour) >= 6:
+                polygons.append(contour)
+        
+        return polygons
 
     def save(self, filename: str = "annotations.json"):
         """Save annotations to JSON file"""
@@ -181,6 +223,8 @@ class YOLOExporter:
         height = max(0, min(1, height))
 
         # Write to label file (one line per object)
+        # Ensure labels directory exists before writing
+        self.labels_dir.mkdir(parents=True, exist_ok=True)
         label_file = self.labels_dir / f"{image_name}.txt"
         with open(label_file, "a") as f:
             f.write(
