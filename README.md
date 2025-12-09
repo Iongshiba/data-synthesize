@@ -21,18 +21,18 @@ A Python-based OpenGL application for generating synthetic training data with au
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.11
 - OpenGL-capable graphics card
 - Windows/Linux/macOS
 
 ## Setup
 
-### 1. Install Python
+### 1. Install Python 3.11
 
-Make sure you have Python 3.8 or higher installed:
+Make sure you have Python 3.11 installed:
 
 ```bash
-python --version
+python3.11 --version
 ```
 
 ### 2. Clone the Repository
