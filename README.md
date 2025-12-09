@@ -2,7 +2,7 @@
 
 A Python-based OpenGL application for generating synthetic training data with automatic annotations for object detection and segmentation tasks. Load 3D models (OBJ, GLTF, GLB, FBX), place them in scenes, and export RGB images with depth maps, segmentation masks, and COCO/YOLO annotations.
 
-![Data Synthesis Demo](https://via.placeholder.com/800x400?text=Data+Synthesis+Application)
+![Data Synthesis Demo](demo/synthesized.png)
 
 ## Features
 
@@ -59,7 +59,24 @@ pip install -r requirements.txt
 - `pyassimp` - 3D model loading (GLTF, FBX, etc.)
 - `plyfile` - PLY format support
 
-### 4. Run the Application
+### 4. Install Assimp Library (Windows)
+
+For loading GLTF, FBX, and other 3D formats, you need the Assimp native library:
+
+**Windows:**
+1. Download `assimp-vc143-mt.dll` from [Assimp releases](https://github.com/assimp/assimp/releases)
+2. Place the DLL file in the **root project directory** (same folder as `data_synthesis_app.py`)
+
+**Linux/macOS:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install libassimp-dev
+
+# macOS
+brew install assimp
+```
+
+### 5. Run the Application
 
 ```bash
 python data_synthesis_app.py
